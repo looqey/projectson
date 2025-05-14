@@ -68,7 +68,9 @@ jobs:
         shell: bash
         run: |
           APP_ID_VALUE="looqey.projectson.go"
+          # Compile directly with go build
           go build -o ${{ matrix.target.asset_filename }} -ldflags="-X 'main.AppID=$APP_ID_VALUE'" .
+          # Make it executable
           chmod +x ${{ matrix.target.asset_filename }}
 
       - name: Build for Windows and macOS (using Fyne package)
@@ -88,13 +90,29 @@ jobs:
         run: |
           zip -r ${{ matrix.target.asset_filename }} ${{ matrix.target.base_app_name }}.app
 
-      - name: Upload build artifact
+      # Update path based on the target OS
+      - name: Upload Linux artifact
+        if: matrix.target.os_name == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target.asset_filename }}
-          path: |
-            ${{ matrix.target.asset_filename }}
-            ${{ matrix.target.os_name == 'Windows' && matrix.target.base_app_name }}.exe || '' }}
+          path: ${{ matrix.target.asset_filename }}
+          if-no-files-found: error
+
+      - name: Upload Windows artifact
+        if: matrix.target.os_name == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.asset_filename }}
+          path: ${{ matrix.target.base_app_name }}.exe
+          if-no-files-found: error
+
+      - name: Upload macOS artifact
+        if: matrix.target.os_name == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.asset_filename }}
+          path: ${{ matrix.target.asset_filename }}
           if-no-files-found: error
 
   create_release:
@@ -108,20 +126,39 @@ jobs:
         with:
           path: ./artifacts
 
+      - name: Rename Windows artifact
+        run: |
+          if [ -f "./artifacts/projectson-windows-amd64.exe/projectson.exe" ]; then
+            mkdir -p ./release-files
+            cp ./artifacts/projectson-windows-amd64.exe/projectson.exe ./release-files/projectson-windows-amd64.exe
+          fi
+          
+          if [ -f "./artifacts/projectson-linux-amd64/projectson-linux-amd64" ]; then
+            mkdir -p ./release-files
+            cp ./artifacts/projectson-linux-amd64/projectson-linux-amd64 ./release-files/projectson-linux-amd64
+          fi
+          
+          if [ -f "./artifacts/projectson-macos-amd64.app.zip/projectson-macos-amd64.app.zip" ]; then
+            mkdir -p ./release-files
+            cp ./artifacts/projectson-macos-amd64.app.zip/projectson-macos-amd64.app.zip ./release-files/projectson-macos-amd64.app.zip
+          fi
+          
+          echo "Files prepared for release:"
+          ls -la ./release-files || echo "No files found in release-files directory"
+
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
-            Auto-release for ${{ github.ref_name }}.
+            Автоматический релиз версии ${{ github.ref_name }}.
 
-            - `projectson-linux-amd64`: Linux executable (amd64)
-            - `projectson-windows-amd64.exe`: Windows executable (amd64)
-            - `projectson-macos-amd64.app.zip`: macOS app (amd64, .app in zip bundle)
+            **Собранные файлы:**
+            - `projectson-linux-amd64`: Исполняемый файл для Linux (amd64)
+            - `projectson-windows-amd64.exe`: Исполняемый файл для Windows (amd64)
+            - `projectson-macos-amd64.app.zip`: Приложение для macOS (amd64, .app в zip-архиве)
           draft: false
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           files: |
-            ./artifacts/projectson-linux-amd64/*
-            ./artifacts/projectson-windows-amd64.exe/*
-            ./artifacts/projectson-macos-amd64.app.zip/*
+            ./release-files/*
