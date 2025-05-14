@@ -1,0 +1,48 @@
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+projectson # Linux executable name if built locally without extension
+projectson.exe # Windows executable name
+projectson.app/ # macOS application bundle
+
+# Fyne specific build artifacts
+bin/
+dist/
+release/
+*.syso
+
+# Output files from the application itself (if user saves them in project root)
+*.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE / Editor specific
+.idea/
+.vscode/
+*.swp
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Go Module cache
+vendor/
+
+# Local Fyne settings (if any)
+# FyneApp.toml (though usually this is for settings, not gitignored)
+
+# If you use delve for debugging
+debug
+*.test
+
+# Coverage
+coverage.out

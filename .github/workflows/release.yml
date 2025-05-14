@@ -1,0 +1,153 @@
+name: Release Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for ${{ matrix.target.os_name }}
+    runs-on: ${{ matrix.target.os_runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - os_name: Linux
+            os_runner: ubuntu-latest
+            asset_filename: projectson-linux-amd64
+            base_app_name: projectson
+            fyne_os_target: linux
+          - os_name: Windows
+            os_runner: windows-latest
+            asset_filename: projectson-windows-amd64.exe
+            base_app_name: projectson
+            fyne_os_target: windows
+          - os_name: macOS
+            os_runner: macos-latest
+            asset_filename: projectson-macos-amd64.app.zip
+            base_app_name: projectson
+            fyne_os_target: darwin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+
+      - name: Install Linux Fyne dependencies
+        if: matrix.target.os_name == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
+                                  libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+                                  libxi-dev libxxf86vm-dev \
+                                  xorg-dev gcc pkg-config libgtk-3-dev
+
+      - name: Install Fyne CLI
+        run: go install fyne.io/tools/cmd/fyne@latest
+
+      - name: Check for icon.png
+        id: check_icon
+        shell: bash
+        run: |
+          if [[ -f "icon.png" ]]; then
+            echo "icon_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "icon_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Fyne application
+        shell: bash
+        run: |
+          APP_ID_VALUE="looqey.projectson.go"
+          if [[ "${{ steps.check_icon.outputs.icon_exists }}" == "true" ]]; then
+            fyne package -os ${{ matrix.target.fyne_os_target }} -icon icon.png --app-id $APP_ID_VALUE -name ${{ matrix.target.base_app_name }} -release
+          else
+            fyne package -os ${{ matrix.target.fyne_os_target }} --app-id $APP_ID_VALUE -name ${{ matrix.target.base_app_name }} -release
+          fi
+
+      # Find and locate the generated files
+      - name: Find built artifacts
+        id: find_files
+        shell: bash
+        run: |
+          echo "Finding build artifacts in the current directory..."
+          find . -maxdepth 2 -type f | grep -v "\.git" || true
+          
+          if [[ "${{ matrix.target.os_name }}" == "Linux" ]]; then
+            if [[ -f "${{ matrix.target.base_app_name }}" ]]; then
+              echo "artifact_path=${{ matrix.target.base_app_name }}" >> $GITHUB_OUTPUT
+            else
+              # Look for binary in different possible locations
+              FOUND_PATH=$(find . -type f -name "${{ matrix.target.base_app_name }}" -o -name "${{ matrix.target.base_app_name }}.bin" | head -1 || echo "")
+              if [[ -n "$FOUND_PATH" ]]; then
+                echo "artifact_path=$FOUND_PATH" >> $GITHUB_OUTPUT
+              else
+                echo "Could not find Linux binary, using default path" 
+                echo "artifact_path=${{ matrix.target.base_app_name }}" >> $GITHUB_OUTPUT
+              fi
+            fi
+          elif [[ "${{ matrix.target.os_name }}" == "Windows" ]]; then
+            if [[ -f "${{ matrix.target.base_app_name }}.exe" ]]; then
+              echo "artifact_path=${{ matrix.target.base_app_name }}.exe" >> $GITHUB_OUTPUT
+            else
+              echo "Could not find Windows executable, using default path"
+              echo "artifact_path=${{ matrix.target.base_app_name }}.exe" >> $GITHUB_OUTPUT
+            fi
+          elif [[ "${{ matrix.target.os_name }}" == "macOS" ]]; then
+            # For macOS, prepare to zip the .app bundle
+            if [[ -d "${{ matrix.target.base_app_name }}.app" ]]; then
+              zip -r "${{ matrix.target.asset_filename }}" "${{ matrix.target.base_app_name }}.app"
+              echo "artifact_path=${{ matrix.target.asset_filename }}" >> $GITHUB_OUTPUT
+            else
+              echo "Could not find macOS .app bundle, using default path"
+              echo "artifact_path=${{ matrix.target.base_app_name }}.app" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.asset_filename }}
+          path: ${{ steps.find_files.outputs.artifact_path || '.' }}
+          if-no-files-found: warn
+
+  create_release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          ls -R ./artifacts
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            Auto-release for ${{ github.ref_name }}.
+
+            - `projectson-linux-amd64`: Linux executable (amd64)
+            - `projectson-windows-amd64.exe`: Windows executable (amd64)
+            - `projectson-macos-amd64.app.zip`: macOS app (amd64, .app in zip bundle)
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          files: |
+            ./artifacts/projectson-linux-amd64/*
+            ./artifacts/projectson-windows-amd64.exe/*
+            ./artifacts/projectson-macos-amd64.app.zip/*
