@@ -63,7 +63,16 @@ jobs:
             echo "icon_exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build Fyne application
+      - name: Build for Linux (using go build directly)
+        if: matrix.target.os_name == 'Linux'
+        shell: bash
+        run: |
+          APP_ID_VALUE="looqey.projectson.go"
+          go build -o ${{ matrix.target.asset_filename }} -ldflags="-X 'main.AppID=$APP_ID_VALUE'" .
+          chmod +x ${{ matrix.target.asset_filename }}
+
+      - name: Build for Windows and macOS (using Fyne package)
+        if: matrix.target.os_name != 'Linux'
         shell: bash
         run: |
           APP_ID_VALUE="looqey.projectson.go"
@@ -73,51 +82,20 @@ jobs:
             fyne package -os ${{ matrix.target.fyne_os_target }} --app-id $APP_ID_VALUE -name ${{ matrix.target.base_app_name }} -release
           fi
 
-      # Find and locate the generated files
-      - name: Find built artifacts
-        id: find_files
+      - name: Prepare macOS artifact (zip .app bundle)
+        if: matrix.target.os_name == 'macOS'
         shell: bash
         run: |
-          echo "Finding build artifacts in the current directory..."
-          find . -maxdepth 2 -type f | grep -v "\.git" || true
-          
-          if [[ "${{ matrix.target.os_name }}" == "Linux" ]]; then
-            if [[ -f "${{ matrix.target.base_app_name }}" ]]; then
-              echo "artifact_path=${{ matrix.target.base_app_name }}" >> $GITHUB_OUTPUT
-            else
-              # Look for binary in different possible locations
-              FOUND_PATH=$(find . -type f -name "${{ matrix.target.base_app_name }}" -o -name "${{ matrix.target.base_app_name }}.bin" | head -1 || echo "")
-              if [[ -n "$FOUND_PATH" ]]; then
-                echo "artifact_path=$FOUND_PATH" >> $GITHUB_OUTPUT
-              else
-                echo "Could not find Linux binary, using default path" 
-                echo "artifact_path=${{ matrix.target.base_app_name }}" >> $GITHUB_OUTPUT
-              fi
-            fi
-          elif [[ "${{ matrix.target.os_name }}" == "Windows" ]]; then
-            if [[ -f "${{ matrix.target.base_app_name }}.exe" ]]; then
-              echo "artifact_path=${{ matrix.target.base_app_name }}.exe" >> $GITHUB_OUTPUT
-            else
-              echo "Could not find Windows executable, using default path"
-              echo "artifact_path=${{ matrix.target.base_app_name }}.exe" >> $GITHUB_OUTPUT
-            fi
-          elif [[ "${{ matrix.target.os_name }}" == "macOS" ]]; then
-            # For macOS, prepare to zip the .app bundle
-            if [[ -d "${{ matrix.target.base_app_name }}.app" ]]; then
-              zip -r "${{ matrix.target.asset_filename }}" "${{ matrix.target.base_app_name }}.app"
-              echo "artifact_path=${{ matrix.target.asset_filename }}" >> $GITHUB_OUTPUT
-            else
-              echo "Could not find macOS .app bundle, using default path"
-              echo "artifact_path=${{ matrix.target.base_app_name }}.app" >> $GITHUB_OUTPUT
-            fi
-          fi
+          zip -r ${{ matrix.target.asset_filename }} ${{ matrix.target.base_app_name }}.app
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target.asset_filename }}
-          path: ${{ steps.find_files.outputs.artifact_path || '.' }}
-          if-no-files-found: warn
+          path: |
+            ${{ matrix.target.asset_filename }}
+            ${{ matrix.target.os_name == 'Windows' && matrix.target.base_app_name }}.exe || '' }}
+          if-no-files-found: error
 
   create_release:
     name: Create GitHub Release
@@ -129,10 +107,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
-      - name: List downloaded artifacts
-        run: |
-          ls -R ./artifacts
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
