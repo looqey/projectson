@@ -303,8 +303,3 @@ Contributions are welcome! Whether it's bug reports, feature requests, documenta
 3.  **Create a Pull Request**: For submitting your changes. Please try to follow existing code style and include tests if applicable.
 
 ---
-
-## License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
-*(You will need to add a LICENSE file with the MIT license text if you haven't already)*
