@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build for ${{ matrix.target.os_name }}
+  build-cli:
+    name: Build CLI for ${{ matrix.target.os_name }}
     runs-on: ${{ matrix.target.os_runner }}
     strategy:
       fail-fast: false
@@ -18,20 +18,16 @@ jobs:
         target:
           - os_name: Linux
             os_runner: ubuntu-latest
-            asset_filename: projectson-linux-amd64
-            base_app_name: projectson
-            fyne_os_target: linux
+            asset_filename: projectson-cli-linux-amd64
+            build_target_path: ./cmd/cli
           - os_name: Windows
             os_runner: windows-latest
-            asset_filename: projectson-windows-amd64.exe
-            base_app_name: projectson
-            fyne_os_target: windows
+            asset_filename: projectson-cli-windows-amd64.exe
+            build_target_path: ./cmd/cli
           - os_name: macOS
             os_runner: macos-latest
-            asset_filename: projectson-macos-amd64.app.zip
-            base_app_name: projectson
-            fyne_os_target: darwin
-
+            asset_filename: projectson-cli-macos-amd64
+            build_target_path: ./cmd/cli
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,110 +37,137 @@ jobs:
         with:
           go-version: '1.24.1'
 
-      - name: Install Linux Fyne dependencies
+      - name: Build CLI
+        shell: bash
+        run: |
+          go build -o ${{ matrix.target.asset_filename }} ${{ matrix.target.build_target_path }}
+          if [[ "${{ matrix.target.os_name }}" == "Linux" || "${{ matrix.target.os_name }}" == "macOS" ]]; then
+            chmod +x ${{ matrix.target.asset_filename }}
+          fi
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.asset_filename }}
+          path: ${{ matrix.target.asset_filename }}
+          if-no-files-found: error
+
+  build-gui:
+    name: Build GUI for ${{ matrix.target.os_name }}
+    runs-on: ${{ matrix.target.os_runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - os_name: Linux
+            os_runner: ubuntu-latest
+            asset_filename: projectson-gui-linux-amd64
+            build_target_path: ./cmd/gui
+          - os_name: Windows
+            os_runner: windows-latest
+            asset_filename: projectson-gui-windows-amd64.exe
+            build_target_path: ./cmd/gui
+          - os_name: macOS
+            os_runner: macos-latest
+            asset_filename: projectson-gui-macos-amd64
+            build_target_path: ./cmd/gui
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+
+      - name: Install Linux GUI dependencies
         if: matrix.target.os_name == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
-                                  libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-                                  libxi-dev libxxf86vm-dev \
-                                  xorg-dev gcc pkg-config libgtk-3-dev
+          libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+          libxi-dev libxxf86vm-dev \
+          xorg-dev gcc pkg-config libgtk-3-dev
+
+      - name: Build GUI
+        shell: bash
+        run: |
+          go build -o ${{ matrix.target.asset_filename }} ${{ matrix.target.build_target_path }}
+          if [[ "${{ matrix.target.os_name }}" == "Linux" || "${{ matrix.target.os_name }}" == "macOS" ]]; then
+            chmod +x ${{ matrix.target.asset_filename }}
+          fi
+
+      - name: Upload GUI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.asset_filename }}
+          path: ${{ matrix.target.asset_filename }}
+          if-no-files-found: error
+
+  build-macos-app:
+    name: Build macOS App Bundle
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
 
       - name: Install Fyne CLI
         run: go install fyne.io/tools/cmd/fyne@latest
 
-      - name: Check for icon.png
-        id: check_icon
+      - name: Build macOS App Bundle
         shell: bash
         run: |
-          if [[ -f "icon.png" ]]; then
-            echo "icon_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "icon_exists=false" >> $GITHUB_OUTPUT
-          fi
+          APP_ID_VALUE="looqey.projectson.gui"
+          fyne package -os darwin --app-id "$APP_ID_VALUE" -name "projectson-gui" -src "./cmd/gui" -release
 
-      - name: Build for Linux (using go build directly)
-        if: matrix.target.os_name == 'Linux'
+      - name: Zip macOS App Bundle
         shell: bash
         run: |
-          APP_ID_VALUE="looqey.projectson.go"
-          # Compile directly with go build
-          go build -o ${{ matrix.target.asset_filename }} -ldflags="-X 'main.AppID=$APP_ID_VALUE'" .
-          # Make it executable
-          chmod +x ${{ matrix.target.asset_filename }}
+          zip -r projectson-gui-macos-amd64.app.zip projectson-gui.app
 
-      - name: Build for Windows and macOS (using Fyne package)
-        if: matrix.target.os_name != 'Linux'
-        shell: bash
-        run: |
-          APP_ID_VALUE="looqey.projectson.go"
-          if [[ "${{ steps.check_icon.outputs.icon_exists }}" == "true" ]]; then
-            fyne package -os ${{ matrix.target.fyne_os_target }} -icon icon.png --app-id $APP_ID_VALUE -name ${{ matrix.target.base_app_name }} -release
-          else
-            fyne package -os ${{ matrix.target.fyne_os_target }} --app-id $APP_ID_VALUE -name ${{ matrix.target.base_app_name }} -release
-          fi
-
-      - name: Prepare macOS artifact (zip .app bundle)
-        if: matrix.target.os_name == 'macOS'
-        shell: bash
-        run: |
-          zip -r ${{ matrix.target.asset_filename }} ${{ matrix.target.base_app_name }}.app
-
-      # Update path based on the target OS
-      - name: Upload Linux artifact
-        if: matrix.target.os_name == 'Linux'
+      - name: Upload macOS App Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target.asset_filename }}
-          path: ${{ matrix.target.asset_filename }}
-          if-no-files-found: error
-
-      - name: Upload Windows artifact
-        if: matrix.target.os_name == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.target.asset_filename }}
-          path: ${{ matrix.target.base_app_name }}.exe
-          if-no-files-found: error
-
-      - name: Upload macOS artifact
-        if: matrix.target.os_name == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.target.asset_filename }}
-          path: ${{ matrix.target.asset_filename }}
+          name: projectson-gui-macos-amd64.app.zip
+          path: projectson-gui-macos-amd64.app.zip
           if-no-files-found: error
 
   create_release:
     name: Create GitHub Release
-    needs: build
+    needs: [build-cli, build-gui, build-macos-app]
     runs-on: ubuntu-latest
-
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
 
-      - name: Rename Windows artifact
+      - name: Prepare files for release
+        id: prep_files
+        shell: bash
         run: |
-          if [ -f "./artifacts/projectson-windows-amd64.exe/projectson.exe" ]; then
-            mkdir -p ./release-files
-            cp ./artifacts/projectson-windows-amd64.exe/projectson.exe ./release-files/projectson-windows-amd64.exe
-          fi
+          mkdir -p ./release-files
           
-          if [ -f "./artifacts/projectson-linux-amd64/projectson-linux-amd64" ]; then
-            mkdir -p ./release-files
-            cp ./artifacts/projectson-linux-amd64/projectson-linux-amd64 ./release-files/projectson-linux-amd64
-          fi
+          cp ./artifacts/projectson-cli-linux-amd64/projectson-cli-linux-amd64 ./release-files/projectson-cli-linux-amd64
+          cp ./artifacts/projectson-cli-windows-amd64.exe/projectson-cli-windows-amd64.exe ./release-files/projectson-cli-windows-amd64.exe
+          cp ./artifacts/projectson-cli-macos-amd64/projectson-cli-macos-amd64 ./release-files/projectson-cli-macos-amd64
           
-          if [ -f "./artifacts/projectson-macos-amd64.app.zip/projectson-macos-amd64.app.zip" ]; then
-            mkdir -p ./release-files
-            cp ./artifacts/projectson-macos-amd64.app.zip/projectson-macos-amd64.app.zip ./release-files/projectson-macos-amd64.app.zip
-          fi
+          cp ./artifacts/projectson-gui-linux-amd64/projectson-gui-linux-amd64 ./release-files/projectson-gui-linux-amd64
+          cp ./artifacts/projectson-gui-windows-amd64.exe/projectson-gui-windows-amd64.exe ./release-files/projectson-gui-windows-amd64.exe
+          cp ./artifacts/projectson-gui-macos-amd64/projectson-gui-macos-amd64 ./release-files/projectson-gui-macos-amd64
+          cp ./artifacts/projectson-gui-macos-amd64.app.zip/projectson-gui-macos-amd64.app.zip ./release-files/projectson-gui-macos-amd64.app.zip
           
-          echo "Files prepared for release:"
-          ls -la ./release-files || echo "No files found in release-files directory"
+          chmod +x ./release-files/projectson-cli-linux-amd64
+          chmod +x ./release-files/projectson-cli-macos-amd64
+          chmod +x ./release-files/projectson-gui-linux-amd64
+          chmod +x ./release-files/projectson-gui-macos-amd64
+          
+          echo "release_glob=./release-files/*" >> $GITHUB_OUTPUT
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
@@ -152,13 +175,18 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
-            Автоматический релиз версии ${{ github.ref_name }}.
+            Auto-release: ${{ github.ref_name }}.
 
-            **Собранные файлы:**
-            - `projectson-linux-amd64`: Исполняемый файл для Linux (amd64)
-            - `projectson-windows-amd64.exe`: Исполняемый файл для Windows (amd64)
-            - `projectson-macos-amd64.app.zip`: Приложение для macOS (amd64, .app в zip-архиве)
+            **CLI:**
+            - `projectson-cli-linux-amd64`: Linux executable (amd64)
+            - `projectson-cli-windows-amd64.exe`: Windows executable (amd64)
+            - `projectson-cli-macos-amd64`: macOS executable (amd64)
+
+            **GUI:**
+            - `projectson-gui-linux-amd64`: Linux eecutable (amd64)
+            - `projectson-gui-windows-amd64.exe`: Windows executable (amd64)
+            - `projectson-gui-macos-amd64`: macOS bundle (amd64)
+            - `projectson-gui-macos-amd64.app.zip`: macOS bundle (amd64, .zip)
           draft: false
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          files: |
-            ./release-files/*
+          files: ${{ steps.prep_files.outputs.release_glob }}

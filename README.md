@@ -1,10 +1,12 @@
-# ProjectSon
+# projectson - project JSON collection tool
 
-**ProjectSon** is a desktop application designed to flexibly collect project files based on a YAML configuration and consolidate them into a compact JSON output. This JSON is ideal for various purposes, including feeding project context to Large Language Models (LLMs) for analysis, code generation, or documentation tasks.
+**Projectson** is a desktop application and command-line tool designed to flexibly collect project files based on a YAML configuration and consolidate them into a compact JSON output. This JSON is ideal for various purposes, including feeding project context to Large Language Models (LLMs) for analysis, code generation, or documentation tasks.
 
-The application provides a user-friendly GUI built with [Fyne](https://fyne.io/) for managing configurations, previewing file selections, and running the collection process.
+The application provides a user-friendly GUI built with [Fyne](https://fyne.io/) for managing configurations, previewing file selections, and running the collection process, alongside a powerful CLI for automation and scripting.
 
-![ProjectSon Screenshot](https://raw.githubusercontent.com/looqey/projectson/master/icon.png)
+**UPD: Added CLI!** Now you can automate tasks directly from your terminal. See the [CLI Usage](#cli-usage) section below.
+
+![ProjectSon Screenshot](https://raw.githubusercontent.com/looqey/projectson/master/Icon.png) <!-- Assuming this icon is still relevant or you might want a more generic one -->
 
 ---
 
@@ -13,7 +15,14 @@ The application provides a user-friendly GUI built with [Fyne](https://fyne.io/)
 -   [Core Idea](#core-idea)
 -   [Key Features](#key-features)
 -   [Pros and Cons](#pros-and-cons)
--   [Basic Usage](#basic-usage)
+-   [Basic GUI Usage](#basic-gui-usage)
+-   [CLI Usage](#cli-usage)
+    -   [General Flags](#general-flags)
+    -   [Commands](#commands)
+        -   [`init`](#init)
+        -   [`validate`](#validate)
+        -   [`preview`](#preview)
+        -   [`run`](#run)
 -   [How It Works](#how-it-works)
 -   [Installation](#installation)
     -   [From Releases (Recommended)](#from-releases-recommended)
@@ -25,7 +34,7 @@ The application provides a user-friendly GUI built with [Fyne](https://fyne.io/)
     -   [`output`](#output-1)
     -   [`exclude_patterns`](#exclude_patterns-1)
     -   [`content_exclusions`](#content_exclusions-1)
--   [Applying AI-Generated Changes](#applying-ai-generated-changes)
+-   [Applying AI-Generated Changes (GUI)](#applying-ai-generated-changes-gui)
 -   [Contributing](#contributing)
 -   [License](#license)
 
@@ -46,16 +55,18 @@ The result is a single, structured JSON file. This JSON can then be easily parse
 
 ## Key Features
 
-*   **GUI Interface**: Easy-to-use graphical interface for managing all settings.
+*   **multi-interface**:
+    *   **GUI Interface**: Easy-to-use graphical interface for managing all settings.
+    *   **CLI Tool**: Powerful command-line interface for automation, scripting, and headless environments.
 *   **YAML Configuration**: Human-readable and version-controllable configuration files.
 *   **Flexible Inclusion Rules**: Specify precisely which files and directories to include, with different modes (path, content, both).
 *   **Powerful Exclusion Capabilities**: Exclude unwanted files and directories using glob patterns or regular expressions.
 *   **Content Stripping**: Define rules (delimiters or regex) to remove irrelevant sections from file content (e.g., comments, specific code blocks).
-*   **File Preview**: See which files will be included and inspect their original and modified (after content exclusion) content before running the full collection.
-*   **Run Statistics**: View stats about the last collection run (files processed, output size, time taken).
-*   **AI Change Application**: A dedicated tab to apply file modifications (create, update, delete) based on a JSON response from an AI.
-*   **Cross-Platform**: Builds for Windows, macOS, and Linux.
-*   **Persistent Settings**: Remembers the last used configuration file.
+*   **File Preview**: See which files will be included (both GUI and CLI `preview` command). In GUI, inspect original and modified content.
+*   **Run Statistics (GUI)**: View stats about the last collection run.
+*   **AI Change Application (GUI)**: A dedicated tab to apply file modifications (create, update, delete) based on a JSON response from an AI.
+*   **Cross-Platform**: Builds for Windows, macOS, and Linux (both GUI and CLI).
+*   **Persistent Settings (GUI)**: Remembers the last used configuration file.
 
 ---
 
@@ -66,7 +77,8 @@ The result is a single, structured JSON file. This JSON can then be easily parse
 *   **Highly Configurable**: Tailor the data collection precisely to your needs.
 *   **Reduces Manual Labor**: Automates the process of gathering project context.
 *   **Compact Output**: The JSON output is designed to be concise, especially after content exclusions and space normalization.
-*   **GUI for Ease of Use**: No need to be a command-line wizard for basic operations.
+*   **GUI for Ease of Use**: No need to be a command-line wizard for visual configuration and review.
+*   **CLI for Automation**: Integrate projectson into your development workflows and CI/CD pipelines.
 *   **Version Controllable Configs**: Store your collection profiles (`.yaml` files) in your project repository.
 *   **Improved LLM Context**: Provides cleaner, more relevant input to LLMs, potentially leading to better results and reduced token usage.
 
@@ -76,9 +88,9 @@ The result is a single, structured JSON file. This JSON can then be easily parse
 
 ---
 
-## Basic Usage
+## Basic GUI Usage
 
-1.  **Launch ProjectSon.**
+1.  **Launch ProjectSon GUI.**
 2.  **Configure:**
     *   Go to the **Config** tab.
     *   Set the **Project Root Path** to your project's main directory.
@@ -103,9 +115,107 @@ The result is a single, structured JSON file. This JSON can then be easily parse
 
 ---
 
+## CLI Usage
+
+The projectson CLI (`projectson-cli`) allows you to perform operations from the command line.
+
+### General Flags
+
+These flags can be used with most commands to override values from the configuration file or provide them if no config file is used.
+
+*   `-c, --config <path>`: Path to the YAML configuration file (default: `projectson_config.yaml` in the current directory).
+*   `-r, --root <path>`: Project root directory.
+*   `-o, --output <path>`: Output JSON file path.
+*   `-f, --formats <ext1,ext2,...>`: Comma-separated list of file formats/extensions (e.g., `go,vue,ts`).
+*   `-e, --exclude <pattern1,pattern2,...>`: Comma-separated list of exclude patterns (e.g., `node_modules,*.log`).
+*   `--include <path1,path2,...>`: (Primarily for `init`) Comma-separated list of paths to include relative to root.
+
+### Commands
+
+#### `init`
+Creates a default configuration file (`projectson_config.yaml`).
+
+**Usage:**
+```bash
+projectson-cli init [flags]
+```
+
+**Flags for `init`:**
+*   `--force`: Overwrite `projectson_config.yaml` if it already exists.
+*   Can also use general flags like `--root`, `--output`, `--formats`, `--include` to pre-fill the new config file.
+
+**Example:**
+```bash
+# Create a default projectson_config.yaml
+projectson-cli init
+
+# Create a config and pre-fill some values
+projectson-cli init --root "/path/to/my/project" --formats "js,ts,html" --output "data/context.json"
+```
+
+#### `validate`
+Validates the configuration file.
+
+**Usage:**
+```bash
+projectson-cli validate [flags]
+```
+
+**Example:**
+```bash
+# Validate the default config file
+projectson-cli validate
+
+# Validate a specific config file
+projectson-cli validate --config "my_custom_config.yaml"
+```
+
+#### `preview`
+Shows a list of files that would be collected based on the current configuration, without actually processing their content or writing an output file.
+
+**Usage:**
+```bash
+projectson-cli preview [flags]
+```
+
+**Example:**
+```bash
+# Preview using projectson_config.yaml
+projectson-cli preview
+
+# Preview using a specific config and overriding the formats
+projectson-cli preview --config "prod.yaml" --formats "go,mod,sum"
+```
+
+#### `run`
+Runs the full file collection process and generates the output JSON file.
+
+**Usage:**
+```bash
+projectson-cli run [flags]
+```
+
+**Example:**
+```bash
+# Run collection using projectson_config.yaml
+projectson-cli run
+
+# Run collection with a specific config and output file
+projectson-cli run --config "docs_config.yaml" --output "documentation_context.json"
+
+# Run collection by specifying all parameters via flags (no config file needed)
+projectson-cli run --root "./my_awesome_project" \
+                   --formats "py,md" \
+                   --include "src,README.md" \
+                   --exclude "*.tmp,build/*" \
+                   --output "awesome_project_dump.json"
+```
+
+---
+
 ## How It Works
 
-1.  **Configuration Loading**: ProjectSon loads settings from a `yaml` file (or uses defaults if none is loaded).
+1.  **Configuration Loading**: ProjectSon loads settings from a `yaml` file (or uses defaults/CLI flags).
 2.  **File Discovery (Preview/Run)**:
     *   It starts with the `root` directory.
     *   If `include` paths are defined, it processes only those. Otherwise, it scans the `root`.
@@ -141,11 +251,16 @@ You can install ProjectSon in one of two ways:
 This is the easiest way for most users.
 
 1.  Go to the [**Releases** page](https://github.com/looqey/projectson/releases) on GitHub.
-2.  Download the appropriate pre-compiled binary for your operating system:
-    *   **Windows**: `projectson-windows-amd64.exe`
-    *   **macOS**: `projectson-macos-amd64.app.zip` (unzip and run the `.app` file)
-    *   **Linux**: `projectson-linux-amd64` (make it executable: `chmod +x projectson-linux-amd64`)
-3.  Run the downloaded application.
+2.  Download the appropriate pre-compiled binary for your operating system and desired interface:
+    *   **GUI Application:**
+        *   Windows: `projectson-gui-windows-amd64.exe`
+        *   macOS: `projectson-gui-macos-amd64.app.zip` (unzip and run the `.app` file)
+        *   Linux: `projectson-gui-linux-amd64` (make it executable: `chmod +x projectson-gui-linux-amd64`)
+    *   **CLI Tool:**
+        *   Windows: `projectson-cli-windows-amd64.exe`
+        *   macOS: `projectson-cli-macos-amd64`
+        *   Linux: `projectson-cli-linux-amd64` (make it executable: `chmod +x projectson-cli-linux-amd64`)
+3.  Place the CLI tool in a directory included in your system's PATH for easy access (e.g., `/usr/local/bin` or `C:\Windows\System32`). Run the GUI application directly.
 
 ### From Source
 
@@ -153,11 +268,11 @@ If you are a developer or want the latest (potentially unstable) version, you ca
 
 **Prerequisites:**
 
-*   Go (version 1.21 or newer recommended, check `go.mod` for the exact version)
+*   Go (version 1.24.1 or newer, check `go.mod` for the exact version)
 *   Git
-*   Fyne dependencies for your OS:
-    *   **Linux (Ubuntu/Debian):** `sudo apt-get install -y libgl1-mesa-dev xorg-dev gcc pkg-config`
-    *   **Linux (Fedora):** `sudo dnf install -y libX11-devel libXcursor-devel libXrandr-devel libXinerama-devel mesa-libGL-devel libXi-devel libXxf86vm-devel gcc pkg-config`
+*   For GUI: Fyne dependencies for your OS (see [Fyne documentation](https://developer.fyne.io/started/)).
+    *   **Linux (Ubuntu/Debian):** `sudo apt-get install -y libgl1-mesa-dev xorg-dev gcc pkg-config libgtk-3-dev`
+    *   **Linux (Fedora):** `sudo dnf install -y libX11-devel libXcursor-devel libXrandr-devel libXinerama-devel mesa-libGL-devel libXi-devel libXxf86vm-devel gcc pkgconfig gtk3-devel`
     *   **macOS:** Xcode Command Line Tools (`xcode-select --install`)
     *   **Windows:** A C compiler like TDM-GCC (usually handled by Fyne tooling if MSYS2/Mingw-w64 is set up).
 
@@ -167,18 +282,27 @@ If you are a developer or want the latest (potentially unstable) version, you ca
     ```bash
     git clone https://github.com/looqey/projectson.git
     cd projectson
-    go mod tide
+    go mod tidy
     ```
-2.  Run the application:
-    ```bash
-    go run main.go
-    ```
+2.  Build and run:
+    *   **CLI:**
+        ```bash
+        go build -o projectson-cli ./cmd/cli
+        ./projectson-cli --help
+        ```
+    *   **GUI:**
+        ```bash
+        # For development run:
+        go run ./cmd/gui/main.go 
+        # Or build:
+        # fyne package -src ./cmd/gui/ -name projectson-gui # (will create OS specific package)
+        ```
 
 ---
 
 ## Configuration
 
-The behavior of ProjectSon is controlled by a YAML configuration file. You can load and save these configurations via the GUI. Here's a detailed breakdown of the fields:
+The behavior of ProjectSon is controlled by a YAML configuration file. You can load and save these configurations via the GUI or create/edit them manually. Here's a detailed breakdown of the fields:
 
 ### `root`
 -   **Type**: `String`
@@ -290,8 +414,7 @@ The behavior of ProjectSon is controlled by a YAML configuration file. You can l
         file_pattern: "*" # Apply to all matched file types
         pattern: "SECRET_API_KEY = '.*?'" # Remove a line containing a secret key
     ```
-You can find more detailed documentation on these fields within the application itself, under the **"Config Docs"** tab.
-
+You can find more detailed documentation on these fields within the GUI application itself, under the **"Config Docs"** tab.
 ---
 
 ## Contributing
@@ -301,5 +424,3 @@ Contributions are welcome! Whether it's bug reports, feature requests, documenta
 1.  **Open an Issue**: For bugs, suggestions, or discussions.
 2.  **Fork the Repository**: Create your own copy of the project.
 3.  **Create a Pull Request**: For submitting your changes. Please try to follow existing code style and include tests if applicable.
-
----
